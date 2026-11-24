@@ -46,6 +46,8 @@ ListView {
     property int year: todayClock.time.getFullYear()
     property int month: todayClock.time.getMonth()
     property int day: todayClock.time.getDate()
+    // Days after today whose events are listed too, grouped under one header per day.
+    property int daysAhead: 14
 
     ConfigurationValue {
         id: timestampDay0
@@ -130,29 +132,37 @@ ListView {
             visible: weatherAvailable
         }
 
-        Label {
-            //% "Today"
-            text: qsTrId("id-today")
-            visible: !modelEmpty
-            height: Dims.h(10)
-            font.pixelSize: Dims.l(6)
-            font.capitalization: Font.SmallCaps
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            verticalAlignment: Text.AlignVCenter
-            horizontalAlignment: Text.AlignHCenter
-            leftPadding: DeviceSpecs.hasRoundScreen ? Dims.w(25) : 0
-            rightPadding: DeviceSpecs.hasRoundScreen ? Dims.w(25) : 0
-            wrapMode: Text.WordWrap
-            maximumLineCount: 1
-        }
     }
 
     model: AgendaModel {
         id: agendaModel
         startDate: new Date(year, month, day, 0, 0, 0)
-        endDate: new Date(year, month, day, 23, 59, 59)
+        endDate: new Date(year, month, day + daysAhead, 23, 59, 59)
+    }
+
+    // sectionBucket is the occurrence's start date ("yyyy-MM-dd"). An event that
+    // started before today and still runs is listed under its start date.
+    function sectionLabel(bucket) {
+        var parts = bucket.split("-")
+        var date = new Date(parts[0], parts[1] - 1, parts[2])
+        if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day)
+            //% "Today"
+            return qsTrId("id-today")
+        return date.toLocaleDateString(Qt.locale(), "ddd d MMM")
+    }
+
+    section.property: "sectionBucket"
+    section.delegate: Label {
+        text: sectionLabel(section)
+        width: parent ? parent.width : 0
+        height: Dims.h(10)
+        font.pixelSize: Dims.l(6)
+        font.capitalization: Font.SmallCaps
+        verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: Text.AlignHCenter
+        leftPadding: DeviceSpecs.hasRoundScreen ? Dims.w(25) : 0
+        rightPadding: DeviceSpecs.hasRoundScreen ? Dims.w(25) : 0
+        maximumLineCount: 1
     }
 
     delegate: Component {
@@ -162,7 +172,7 @@ ListView {
 
             Label {
                 id: hour
-                text: model.occurrence.startTime.toLocaleString(Qt.locale(), use12H.value ? "hh:mm AP" : "hh:mm")
+                text: model.event.allDay ? "–" : model.occurrence.startTime.toLocaleString(Qt.locale(), use12H.value ? "hh:mm AP" : "hh:mm")
                 opacity: 0.8
                 horizontalAlignment: Text.AlignRight
                 anchors.verticalCenter: parent.verticalCenter
@@ -202,8 +212,9 @@ ListView {
         anchors.left: parent.left
         anchors.right: parent.right
         horizontalAlignment: Text.AlignHCenter
-        //% "No events today"
-        text: qsTrId("id-no-events-today") + localeManager.changesObserver
+        //% "No upcoming events"
+        text: (qsTrId("id-no-upcoming-events") === "id-no-upcoming-events"
+               ? "No upcoming events" : qsTrId("id-no-upcoming-events")) + localeManager.changesObserver
         font.pixelSize: Dims.l(6)
         opacity: 0.8
     }
