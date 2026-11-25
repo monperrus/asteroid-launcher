@@ -40,8 +40,11 @@ ListView {
     WallClock {
         id: todayClock
         enabled: true
-        updateFrequency: WallClock.Day
+        // Minute, so that events drop off the list once they have ended.
+        updateFrequency: WallClock.Minute
     }
+
+    property var now: todayClock.time
 
     property int year: todayClock.time.getFullYear()
     property int month: todayClock.time.getMonth()
@@ -140,6 +143,30 @@ ListView {
         endDate: new Date(year, month, day + daysAhead, 23, 59, 59)
     }
 
+    // An occurrence that has ended is hidden (zero height), and so is the header
+    // of a day whose occurrences have all ended. An all-day occurrence's endTime is its last day, inclusive (CalendarWorker).
+    function isPast(event, occurrence) {
+        if (event.allDay)
+            return Qt.formatDate(occurrence.endTime, "yyyy-MM-dd") < Qt.formatDate(now, "yyyy-MM-dd")
+        return occurrence.endTime <= now
+    }
+
+    // CalendarAgendaModel roles: Qt::UserRole (256) + 0 event, + 1 occurrence.
+    readonly property int eventRole: 256
+    readonly property int occurrenceRole: 257
+
+    function upcomingCount(bucket) {
+        var n = 0
+        for (var i = 0; i < agendaModel.count; i++) {
+            var occurrence = agendaModel.get(i, occurrenceRole)
+            if (isPast(agendaModel.get(i, eventRole), occurrence))
+                continue
+            if (bucket === undefined || Qt.formatDate(occurrence.startTime, "yyyy-MM-dd") === bucket)
+                n++
+        }
+        return n
+    }
+
     // sectionBucket is the occurrence's start date ("yyyy-MM-dd"). An event that
     // started before today and still runs is listed under its start date.
     function sectionLabel(bucket) {
@@ -153,9 +180,11 @@ ListView {
 
     section.property: "sectionBucket"
     section.delegate: Label {
+        property bool hasUpcoming: now && agendaModel.count >= 0 && upcomingCount(section) > 0
         text: sectionLabel(section)
+        visible: hasUpcoming
         width: parent ? parent.width : 0
-        height: Dims.h(10)
+        height: hasUpcoming ? Dims.h(10) : 0
         font.pixelSize: Dims.l(6)
         font.capitalization: Font.SmallCaps
         verticalAlignment: Text.AlignVCenter
@@ -167,7 +196,9 @@ ListView {
 
     delegate: Component {
         Item {
-            height: Dims.h(15)
+            property bool past: now && isPast(model.event, model.occurrence)
+            visible: !past
+            height: past ? 0 : Dims.h(15)
             width: parent.width
 
             Label {
@@ -192,7 +223,7 @@ ListView {
         }
     }
 
-    property bool modelEmpty: agendaModel.count === 0
+    property bool modelEmpty: now && agendaModel.count >= 0 && upcomingCount() === 0
 
     Icon {
         id: emptyIndicator
